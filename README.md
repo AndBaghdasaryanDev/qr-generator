@@ -115,13 +115,14 @@ Instead of pasting a link, users can choose **Upload a file** in the Video type 
 2. `POST /api/uploads` reserves an upload (size and type validated, storage quota checked, per-IP rate limit) and returns a one-time upload token plus where to send the bytes.
 3. The browser uploads with progress and cancel:
    - **local driver**: `PUT /api/uploads/{id}/content` — streamed to disk, never buffered in memory, cut off as soon as it exceeds the declared size;
-   - **s3 driver**: directly to the bucket with a 15-minute presigned `PUT` URL (so serverless request-size limits don't apply).
+   - **s3 driver**: directly to the bucket with a 15-minute presigned `PUT` URL (so serverless request-size limits don't apply);
+   - **mongodb driver**: in 4 MiB pieces (`PUT /api/uploads/{id}/content?offset=N`, strictly in order, retried once on network errors) so each request stays under Vercel's 4.5 MB body limit; the first piece is type-checked immediately.
 4. `POST /api/uploads/{id}/complete` verifies the stored size and magic bytes; a mismatch deletes the object.
 5. The upload is attached to a **dynamic** code (`/r/CODE`). By default scanning opens the player page (`/watch/CODE`); "Open the file" redirects straight to `/media/{id}`.
 
 An uploaded video is hosted by this service, so its QR code is **always dynamic** — it stops working if the service goes offline. In return, the owner can replace the video (the printed code stays the same), switch the code to a link, pause it or delete it.
 
-**Serving.** `/media/{id}` serves a video only while its code exists and is active. Local files are streamed with HTTP range requests (needed for seeking and iOS playback); S3 objects are served by redirecting to a 1-hour presigned `GET` URL, so the bucket stays private.
+**Serving.** `/media/{id}` serves a video only while its code exists and is active. Local and MongoDB-stored files are streamed with HTTP range requests (needed for seeking and iOS playback; MongoDB reads only the chunks a range needs, and open-ended ranges are answered in 4 MiB slices to keep serverless responses short); S3 objects are served by redirecting to a 1-hour presigned `GET` URL, so the bucket stays private.
 
 **Housekeeping.** Replacing a video, switching to a link, deleting a code or an admin takedown deletes the file from storage. Uploads that are never finished or never attached to a code are removed after 24 hours (checked opportunistically on new uploads — no cron needed).
 
@@ -136,6 +137,7 @@ curl -X POST "$APP_URL/api/admin/takedown" -H "Authorization: Bearer $ADMIN_TOKE
 
 | Setup | When to use | Cost notes |
 | --- | --- | --- |
+| `VIDEO_UPLOAD_DRIVER=mongodb` | Simplest: no extra service; works on Vercel. Videos are stored in MongoDB in the standard GridFS layout (`videos.files` / `videos.chunks`) | Uses database space — Atlas M0 has 512 MB in total, hence defaults of 50 MB per file and 0.4 GB overall. Every view streams through your app (counts toward Vercel bandwidth/function usage) |
 | `VIDEO_UPLOAD_DRIVER=local` | Development; one VPS/container with a persistent volume (`VIDEO_STORAGE_DIR`) | Disk space and the server's outbound bandwidth — every view is served by your server |
 | `VIDEO_UPLOAD_DRIVER=s3` | Vercel/serverless or anything multi-instance | Storage + requests + egress. Cloudflare R2 has a free tier and no egress fees; AWS S3 charges for egress. Check current provider pricing |
 | `VIDEO_UPLOAD_DRIVER=disabled` | Link-only service (production default) | — |
@@ -199,9 +201,9 @@ See `.env.example`.
 | `BLOCKED_DESTINATION_HOSTS` | No | Comma-separated hosts dynamic codes may not redirect to |
 | `RATE_LIMIT_CREATE_PER_10_MIN` | No | Default 30 creations / IP / 10 min / instance |
 | `RATE_LIMIT_MANAGE_PER_10_MIN` | No | Default 300 owner requests / IP / 10 min / instance |
-| `VIDEO_UPLOAD_DRIVER` | No | `local`, `s3` or `disabled` (default: `local` in development, `disabled` in production) |
-| `VIDEO_MAX_UPLOAD_MB` | No | Per-file limit, default 100 |
-| `VIDEO_STORAGE_QUOTA_GB` | No | Total stored video before uploads are refused, default 5 |
+| `VIDEO_UPLOAD_DRIVER` | No | `mongodb`, `local`, `s3` or `disabled` (default: `local` in development, `disabled` in production) |
+| `VIDEO_MAX_UPLOAD_MB` | No | Per-file limit; default 50 for `mongodb`, 100 otherwise |
+| `VIDEO_STORAGE_QUOTA_GB` | No | Total stored video before uploads are refused; default 0.4 for `mongodb`, 5 otherwise |
 | `RATE_LIMIT_UPLOADS_PER_HOUR` | No | Default 10 uploads / IP / hour / instance |
 | `VIDEO_STORAGE_DIR` | local driver | Default `storage/videos` |
 | `VIDEO_S3_ENDPOINT`, `VIDEO_S3_BUCKET`, `VIDEO_S3_REGION`, `VIDEO_S3_ACCESS_KEY_ID`, `VIDEO_S3_SECRET_ACCESS_KEY` | s3 driver | Bucket credentials; endpoint also needed at build time |
@@ -230,7 +232,7 @@ The app needs a Node.js runtime (Cache Components does not support the Edge runt
 
 **Vercel (or similar serverless):**
 1. Create a MongoDB Atlas cluster (free M0 tier; 512 MB) — see [Database](#database).
-2. For video uploads, create an S3-compatible bucket (e.g. Cloudflare R2) — see [Video uploads](#video-uploads). The serverless filesystem is ephemeral, so the `local` upload driver must not be used there.
+2. For video uploads, use `VIDEO_UPLOAD_DRIVER=mongodb` (no extra service) or an S3-compatible bucket for larger volumes — see [Video uploads](#video-uploads). The serverless filesystem is ephemeral, so the `local` upload driver must not be used there.
 3. Set the environment variables (`APP_URL`, `MONGODB_URI`, `MONGODB_DB`, `VIDEO_*`, `ADMIN_TOKEN`) and deploy.
 
 **Single server / VPS / container:** `npm ci && npm run build && npm start` with `MONGODB_URI` set; uploads can use the `local` driver with `VIDEO_STORAGE_DIR` on a persistent volume.
@@ -254,7 +256,7 @@ Nothing has been deployed as part of this project; the steps above are untested 
 ## Testing
 
 ```bash
-npm test             # 131 unit + integration tests
+npm test             # 136 unit + integration tests
 npm run test:e2e     # 23 Playwright tests (desktop + Pixel 7 viewport)
 ```
 

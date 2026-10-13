@@ -4,7 +4,7 @@ import { ApiError, request, type UploadCredentials } from "@/features/dynamic/ap
 
 export interface UploadConfig {
   enabled: boolean;
-  driver: "local" | "s3" | "disabled";
+  driver: "local" | "s3" | "mongodb" | "disabled";
   maxBytes: number;
 }
 
@@ -15,7 +15,7 @@ export function fetchUploadConfig(): Promise<UploadConfig> {
 interface Reservation {
   uploadId: string;
   uploadToken: string;
-  target: { url: string; method: "PUT"; headers: Record<string, string> };
+  target: { url: string; method: "PUT"; headers: Record<string, string>; chunkSize?: number };
 }
 
 /**
@@ -24,13 +24,15 @@ interface Reservation {
  */
 function putWithProgress(
   target: Reservation["target"],
-  file: File,
+  url: string,
+  body: Blob,
   onProgress: (fraction: number) => void,
   signal: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException("Upload cancelled", "AbortError"));
     const xhr = new XMLHttpRequest();
-    xhr.open(target.method, target.url);
+    xhr.open(target.method, url);
     for (const [name, value] of Object.entries(target.headers)) xhr.setRequestHeader(name, value);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
@@ -49,8 +51,37 @@ function putWithProgress(
     xhr.onerror = () => reject(new ApiError(0, "network", "The upload was interrupted. Check your connection and try again."));
     xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
     signal.addEventListener("abort", () => xhr.abort(), { once: true });
-    xhr.send(file);
+    xhr.send(body);
   });
+}
+
+/**
+ * Sends the file in fixed-size pieces, in order (used when the server stores videos in
+ * its database and must stay under serverless request-size limits). Each piece is retried
+ * once on a network error before giving up.
+ */
+async function putInPieces(
+  target: Reservation["target"] & { chunkSize: number },
+  file: File,
+  onProgress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  for (let offset = 0; offset < file.size; offset += target.chunkSize) {
+    const piece = file.slice(offset, offset + target.chunkSize);
+    const url = `${target.url}${target.url.includes("?") ? "&" : "?"}offset=${offset}`;
+    const report = (fraction: number) => onProgress((offset + fraction * piece.size) / file.size);
+    try {
+      await putWithProgress(target, url, piece, report, signal);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 0) throw error;
+      try {
+        await putWithProgress(target, url, piece, report, signal);
+      } catch (retryError) {
+        // 409 on a retry means the first attempt reached the server after all.
+        if (!(retryError instanceof ApiError) || retryError.status !== 409) throw retryError;
+      }
+    }
+  }
 }
 
 /** Reserve → upload the bytes → confirm. Returns credentials to attach the video to a code. */
@@ -63,7 +94,12 @@ export async function uploadVideoFile(
     method: "POST",
     body: JSON.stringify({ fileName: file.name, sizeBytes: file.size, contentType }),
   });
-  await putWithProgress(reservation.target, file, options.onProgress, options.signal);
+  const { target } = reservation;
+  if (target.chunkSize) {
+    await putInPieces({ ...target, chunkSize: target.chunkSize }, file, options.onProgress, options.signal);
+  } else {
+    await putWithProgress(target, target.url, file, options.onProgress, options.signal);
+  }
   await request<{ ok: true }>(`/api/uploads/${reservation.uploadId}/complete`, {
     method: "POST",
     extraHeaders: { "X-Upload-Token": reservation.uploadToken },

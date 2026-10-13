@@ -1,10 +1,13 @@
 import "server-only";
 import path from "node:path";
+import { getDb } from "@/server/db/client";
 import { LocalVideoStorage } from "./local";
+import { MongoVideoStorage } from "./mongodb";
 import { S3VideoStorage } from "./s3";
 import type { VideoStorage } from "./types";
 
-export type UploadDriver = "local" | "s3" | "disabled";
+export type UploadDriver = "local" | "s3" | "mongodb" | "disabled";
+const DRIVERS: readonly UploadDriver[] = ["local", "s3", "mongodb", "disabled"];
 
 export interface VideoUploadConfig {
   driver: UploadDriver;
@@ -27,15 +30,14 @@ function positiveNumber(value: string | undefined, fallback: number): number {
 export function getVideoUploadConfig(): VideoUploadConfig {
   const configured = process.env.VIDEO_UPLOAD_DRIVER as UploadDriver | undefined;
   const driver: UploadDriver =
-    configured === "local" || configured === "s3" || configured === "disabled"
-      ? configured
-      : process.env.NODE_ENV === "production"
-        ? "disabled"
-        : "local";
+    configured && DRIVERS.includes(configured) ? configured : process.env.NODE_ENV === "production" ? "disabled" : "local";
+  // Videos stored in the database share its space with everything else (512 MB on Atlas M0),
+  // so that driver gets smaller defaults.
+  const inDatabase = driver === "mongodb";
   return {
     driver,
-    maxBytes: Math.round(positiveNumber(process.env.VIDEO_MAX_UPLOAD_MB, 100) * MB),
-    quotaBytes: Math.round(positiveNumber(process.env.VIDEO_STORAGE_QUOTA_GB, 5) * 1024 * MB),
+    maxBytes: Math.round(positiveNumber(process.env.VIDEO_MAX_UPLOAD_MB, inDatabase ? 50 : 100) * MB),
+    quotaBytes: Math.round(positiveNumber(process.env.VIDEO_STORAGE_QUOTA_GB, inDatabase ? 0.4 : 5) * 1024 * MB),
   };
 }
 
@@ -65,6 +67,8 @@ export function getVideoStorage(): VideoStorage {
   let storage: VideoStorage;
   if (driver === "local") {
     storage = new LocalVideoStorage(path.resolve(process.env.VIDEO_STORAGE_DIR || "storage/videos"));
+  } else if (driver === "mongodb") {
+    storage = new MongoVideoStorage(getDb);
   } else if (driver === "s3") {
     const { VIDEO_S3_ENDPOINT, VIDEO_S3_BUCKET, VIDEO_S3_ACCESS_KEY_ID, VIDEO_S3_SECRET_ACCESS_KEY } = process.env;
     if (!VIDEO_S3_ENDPOINT || !VIDEO_S3_BUCKET || !VIDEO_S3_ACCESS_KEY_ID || !VIDEO_S3_SECRET_ACCESS_KEY) {

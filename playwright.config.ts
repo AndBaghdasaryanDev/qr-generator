@@ -29,8 +29,8 @@ export default defineConfig({
     env: {
       PORT: String(PORT),
       APP_URL: BASE_URL,
-      VIDEO_UPLOAD_DRIVER: "local",
-      VIDEO_STORAGE_DIR: "storage/e2e-videos",
+      // Same setup as production: videos stored in MongoDB, uploaded in pieces.
+      VIDEO_UPLOAD_DRIVER: "mongodb",
       VIDEO_MAX_UPLOAD_MB: "64",
       RATE_LIMIT_UPLOADS_PER_HOUR: "100",
     },

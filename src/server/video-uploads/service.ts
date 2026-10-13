@@ -4,9 +4,10 @@ import { ACCEPTED_VIDEO_TYPES, formatBytes, sniffVideoType, VIDEO_SNIFF_BYTES } 
 import type { Database } from "@/server/db/client";
 import type { VideoAssetDoc } from "@/server/db/types";
 import { generateManageToken, hashToken, tokenMatches } from "@/server/dynamic-qr/crypto";
-import { ForbiddenError, NotFoundError, QuotaExceededError, ValidationError, zodToValidationError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError, QuotaExceededError, ValidationError, zodToValidationError } from "@/server/errors";
 import type { VideoUploadConfig } from "@/server/storage/config";
 import { LocalVideoStorage, UploadTooLargeError } from "@/server/storage/local";
+import { DuplicatePieceError, MongoVideoStorage, UPLOAD_PIECE_BYTES } from "@/server/storage/mongodb";
 import type { UploadTarget, VideoStorage } from "@/server/storage/types";
 
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -106,10 +107,11 @@ export async function createUpload(
     qrCodeId: null,
     createdAt: new Date(),
     deletedAt: null,
+    receivedBytes: 0,
   });
   const target = await storage.createUploadTarget(storageKey, input.contentType, localUploadUrl(id));
-  // The local endpoint authenticates the PUT itself; presigned URLs carry their own signature.
-  if (storage.driver === "local") target.headers["X-Upload-Token"] = token;
+  // Uploads through this app authenticate with the token; presigned S3 URLs carry their own signature.
+  if (storage.driver !== "s3") target.headers["X-Upload-Token"] = token;
   return { uploadId: id, uploadToken: token, target };
 }
 
@@ -146,6 +148,86 @@ export async function receiveLocalUpload(
     if (error instanceof UploadTooLargeError) throw new ValidationError("The file is larger than declared.");
     throw error;
   }
+}
+
+/** Reads a request body, refusing anything larger than `maxBytes`. */
+async function readBodyLimited(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Uint8Array> {
+  if (!body) throw new ValidationError("No data was sent.");
+  const reader = body.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new ValidationError("Upload piece is too large.");
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
+}
+
+/**
+ * Step 2 (MongoDB driver): receive one piece of the file. Pieces must arrive in order;
+ * the expected offset is tracked on the asset, and the first piece is type-checked
+ * immediately so a non-video is rejected before the rest is uploaded.
+ */
+export async function receiveUploadPiece(
+  db: Database,
+  storage: VideoStorage,
+  asset: VideoAssetDoc,
+  offset: number,
+  body: ReadableStream<Uint8Array> | null,
+): Promise<{ receivedBytes: number; complete: boolean }> {
+  if (!(storage instanceof MongoVideoStorage)) throw new ValidationError("This server doesn't accept chunked uploads.");
+  if (asset.status !== "pending") throw new ValidationError("This upload is already finished.");
+  const received = asset.receivedBytes ?? 0;
+  if (!Number.isInteger(offset) || offset !== received) {
+    throw new ConflictError(`Expected the piece starting at byte ${received}.`);
+  }
+
+  const bytes = await readBodyLimited(body, UPLOAD_PIECE_BYTES);
+  const end = offset + bytes.length;
+  const isLast = end === asset.sizeBytes;
+  if (bytes.length === 0 || end > asset.sizeBytes || (!isLast && bytes.length !== UPLOAD_PIECE_BYTES)) {
+    throw new ValidationError("Upload piece has the wrong size.");
+  }
+
+  let contentType = asset.contentType;
+  if (offset === 0) {
+    try {
+      contentType = verifiedType(asset, bytes.subarray(0, VIDEO_SNIFF_BYTES));
+    } catch (error) {
+      await deleteAsset(db, storage, asset);
+      throw error;
+    }
+  }
+
+  try {
+    await storage.writePiece(asset.storageKey, offset, bytes);
+  } catch (error) {
+    if (error instanceof DuplicatePieceError) throw new ConflictError("This piece was already received.");
+    throw error;
+  }
+  const advanced = await db.videoAssets.updateOne(
+    { _id: asset._id, status: "pending", receivedBytes: received },
+    { $set: { receivedBytes: end, contentType } },
+  );
+  if (advanced.matchedCount === 0) throw new ConflictError("The upload changed while this piece was being saved.");
+
+  if (isLast) {
+    await storage.finalize(asset.storageKey, end, contentType);
+    await db.videoAssets.updateOne({ _id: asset._id, status: "pending" }, { $set: { status: "ready" } });
+  }
+  return { receivedBytes: end, complete: isLast };
 }
 
 /** Step 3: confirm the upload. For object storage this is where size and type are checked. */

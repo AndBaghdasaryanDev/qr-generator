@@ -2,7 +2,7 @@ import "server-only";
 import { MongoServerError, MongoServerSelectionError } from "mongodb";
 import { DatabaseNotConfiguredError } from "@/server/db/client";
 import { MANAGE_TOKEN_PATTERN } from "@/server/dynamic-qr/crypto";
-import { ForbiddenError, NotFoundError, QuotaExceededError, ValidationError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError, QuotaExceededError, ValidationError } from "@/server/errors";
 import { UploadsDisabledError } from "@/server/storage/config";
 import { StorageError } from "@/server/storage/types";
 
@@ -83,6 +83,7 @@ export function handleError(error: unknown): Response {
   }
   if (error instanceof NotFoundError) return jsonError(404, "not_found", error.message);
   if (error instanceof ForbiddenError) return jsonError(403, "forbidden", error.message);
+  if (error instanceof ConflictError) return jsonError(409, "conflict", error.message);
   if (error instanceof QuotaExceededError) return jsonError(507, "storage_full", error.message);
   if (error instanceof UploadsDisabledError) return jsonError(503, "uploads_disabled", error.message);
   if (error instanceof StorageError) {

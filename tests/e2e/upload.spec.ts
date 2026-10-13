@@ -89,22 +89,35 @@ test("non-video files are rejected before upload", async ({ page }) => {
   await expect(page.getByText("This isn't an MP4, WebM or MOV video file.")).toBeVisible();
 });
 
-test("large uploads stream through the real server", async ({ request }) => {
-  const size = 30 * 1024 * 1024;
+test("a 30 MB video uploads in pieces through the real server and is served intact", async ({ request }) => {
+  const size = 30 * 1024 * 1024 + 777;
+  const file = fakeMp4(size, 3);
   const reserved = await request.post("/api/uploads", { data: { fileName: "big.mp4", sizeBytes: size, contentType: "video/mp4" } });
   expect(reserved.status()).toBe(201);
   const { uploadId, uploadToken, target } = (await reserved.json()) as {
     uploadId: string;
     uploadToken: string;
-    target: { url: string; headers: Record<string, string> };
+    target: { url: string; headers: Record<string, string>; chunkSize: number };
   };
-  const put = await request.put(target.url, { data: fakeMp4(size), headers: target.headers, timeout: 120_000 });
-  expect(put.status()).toBe(200);
+  expect(target.chunkSize).toBe(4 * 1024 * 1024);
+  for (let offset = 0; offset < size; offset += target.chunkSize) {
+    const put = await request.put(`${target.url}?offset=${offset}`, {
+      data: file.subarray(offset, offset + target.chunkSize),
+      headers: target.headers,
+    });
+    expect(put.status()).toBe(200);
+  }
   const done = await request.post(`/api/uploads/${uploadId}/complete`, { headers: { "X-Upload-Token": uploadToken } });
   expect(done.status()).toBe(200);
+
+  const created = await request.post("/api/qr-codes", { data: { qrType: "video", upload: { id: uploadId, token: uploadToken } } });
+  expect(created.status()).toBe(201);
+  const tail = await request.get(`/media/${uploadId}`, { headers: { Range: `bytes=${size - 5000}-${size - 1}` } });
+  expect(tail.status()).toBe(206);
+  expect(Buffer.compare(await tail.body(), file.subarray(size - 5000))).toBe(0);
 });
 
 test("upload settings are exposed to the client", async ({ request }) => {
   const res = await request.get("/api/uploads");
-  expect(await res.json()).toEqual({ enabled: true, driver: "local", maxBytes: 64 * 1024 * 1024 });
+  expect(await res.json()).toEqual({ enabled: true, driver: "mongodb", maxBytes: 64 * 1024 * 1024 });
 });

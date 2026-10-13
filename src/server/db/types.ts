@@ -1,3 +1,4 @@
+import type { Binary } from "mongodb";
 import type { DynamicQrType, Presentation } from "@/lib/dynamic-types";
 
 /**
@@ -50,4 +51,24 @@ export interface VideoAssetDoc {
   qrCodeId: string | null;
   createdAt: Date;
   deletedAt: Date | null;
+  /** Bytes received so far by the chunked MongoDB (GridFS) upload driver. */
+  receivedBytes?: number;
+}
+
+/** GridFS-compatible file record (collection `videos.files`), used by the MongoDB storage driver. */
+export interface GridFsFileDoc {
+  /** The asset's storage key. */
+  _id: string;
+  length: number;
+  chunkSize: number;
+  uploadDate: Date;
+  filename: string;
+  metadata: { contentType: string };
+}
+
+/** GridFS-compatible chunk (collection `videos.chunks`). */
+export interface GridFsChunkDoc {
+  files_id: string;
+  n: number;
+  data: Binary;
 }

@@ -18,5 +18,7 @@ export function zodToValidationError(error: z.ZodError): ValidationError {
 
 export class NotFoundError extends Error {}
 export class ForbiddenError extends Error {}
+/** The request doesn't fit the current state (e.g. an upload piece arrived out of order). */
+export class ConflictError extends Error {}
 /** Server-wide storage budget reached. */
 export class QuotaExceededError extends Error {}
