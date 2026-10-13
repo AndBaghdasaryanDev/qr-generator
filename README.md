@@ -195,13 +195,13 @@ See `.env.example`.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `APP_URL` | **Production** | Public origin for short links, metadata, sitemap. Without it, short links use the request origin. |
+| `APP_URL` | Custom domains | Public origin for short links, metadata, sitemap. On Vercel the production domain (`VERCEL_PROJECT_PRODUCTION_URL`) is used automatically; elsewhere the request origin. Set it when you use a custom domain. |
 | `MONGODB_URI` | **For dynamic codes & uploads** | MongoDB connection string (`mongodb+srv://…`). When unset, dynamic endpoints return 503 while static generation keeps working. |
 | `MONGODB_DB` | No | Database name, default `qr_studio` |
 | `BLOCKED_DESTINATION_HOSTS` | No | Comma-separated hosts dynamic codes may not redirect to |
 | `RATE_LIMIT_CREATE_PER_10_MIN` | No | Default 30 creations / IP / 10 min / instance |
 | `RATE_LIMIT_MANAGE_PER_10_MIN` | No | Default 300 owner requests / IP / 10 min / instance |
-| `VIDEO_UPLOAD_DRIVER` | No | `mongodb`, `local`, `s3` or `disabled` (default: `local` in development, `disabled` in production) |
+| `VIDEO_UPLOAD_DRIVER` | No | `mongodb`, `local`, `s3` or `disabled` (default: `mongodb` when `MONGODB_URI` is set, otherwise `disabled`) |
 | `VIDEO_MAX_UPLOAD_MB` | No | Per-file limit; default 50 for `mongodb`, 100 otherwise |
 | `VIDEO_STORAGE_QUOTA_GB` | No | Total stored video before uploads are refused; default 0.4 for `mongodb`, 5 otherwise |
 | `RATE_LIMIT_UPLOADS_PER_HOUR` | No | Default 10 uploads / IP / hour / instance |
@@ -233,7 +233,7 @@ The app needs a Node.js runtime (Cache Components does not support the Edge runt
 **Vercel (or similar serverless):**
 1. Create a MongoDB Atlas cluster (free M0 tier; 512 MB) — see [Database](#database).
 2. For video uploads, use `VIDEO_UPLOAD_DRIVER=mongodb` (no extra service) or an S3-compatible bucket for larger volumes — see [Video uploads](#video-uploads). The serverless filesystem is ephemeral, so the `local` upload driver must not be used there.
-3. Set the environment variables (`APP_URL`, `MONGODB_URI`, `MONGODB_DB`, `VIDEO_*`, `ADMIN_TOKEN`) and deploy.
+3. Set `MONGODB_URI` (the only required variable; QR codes and uploaded videos both go to MongoDB) and deploy. Functions are pinned to Frankfurt (`vercel.json` → `fra1`) to sit next to an Atlas cluster in AWS eu-central-1 — change it if your cluster is elsewhere. Check `https://<your-domain>/api/health` afterwards.
 
 **Single server / VPS / container:** `npm ci && npm run build && npm start` with `MONGODB_URI` set; uploads can use the `local` driver with `VIDEO_STORAGE_DIR` on a persistent volume.
 

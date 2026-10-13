@@ -23,14 +23,15 @@ function positiveNumber(value: string | undefined, fallback: number): number {
 }
 
 /**
- * Uploads are on by default only in development (local disk). In production the operator
- * must opt in explicitly, because hosting videos costs storage and bandwidth and needs
- * an abuse-handling plan.
+ * By default videos are stored in the same MongoDB database as everything else, so a
+ * deployment only needs MONGODB_URI. Without a database, uploads are off (their records
+ * live in the database too). VIDEO_UPLOAD_DRIVER can choose local disk or S3 instead,
+ * or `disabled` to turn uploads off.
  */
 export function getVideoUploadConfig(): VideoUploadConfig {
   const configured = process.env.VIDEO_UPLOAD_DRIVER as UploadDriver | undefined;
   const driver: UploadDriver =
-    configured && DRIVERS.includes(configured) ? configured : process.env.NODE_ENV === "production" ? "disabled" : "local";
+    configured && DRIVERS.includes(configured) ? configured : process.env.MONGODB_URI ? "mongodb" : "disabled";
   // Videos stored in the database share its space with everything else (512 MB on Atlas M0),
   // so that driver gets smaller defaults.
   const inDatabase = driver === "mongodb";
