@@ -12,7 +12,15 @@ describe("getVideoUploadConfig defaults", () => {
     delete process.env.VIDEO_UPLOAD_DRIVER;
     delete process.env.VIDEO_MAX_UPLOAD_MB;
     delete process.env.VIDEO_STORAGE_QUOTA_GB;
-    expect(getVideoUploadConfig()).toEqual({ driver: "mongodb", maxBytes: 50 * 1024 * 1024, quotaBytes: Math.round(0.4 * 1024 * 1024 * 1024) });
+    const quota = Math.round(0.4 * 1024 * 1024 * 1024);
+    // No separate per-file cap: one video may use the whole video quota.
+    expect(getVideoUploadConfig()).toEqual({ driver: "mongodb", maxBytes: quota, quotaBytes: quota });
+  });
+
+  it("still honours an explicit per-file limit", () => {
+    process.env.MONGODB_URI = "mongodb://example";
+    process.env.VIDEO_MAX_UPLOAD_MB = "20";
+    expect(getVideoUploadConfig().maxBytes).toBe(20 * 1024 * 1024);
   });
 
   it("turns uploads off without a database", () => {

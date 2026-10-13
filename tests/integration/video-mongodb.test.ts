@@ -74,12 +74,21 @@ beforeAll(async () => {
 });
 
 describe("videos stored in MongoDB (GridFS layout)", () => {
-  it("asks the browser for 4 MiB pieces and uses a 50 MB default limit", async () => {
+  it("asks the browser for 4 MiB pieces; a single file may use the whole video quota", async () => {
     const r = await reserveFor(1000);
     expect(r.target.chunkSize).toBe(4 * 1024 * 1024);
     expect(r.target.url).toBe(`/api/uploads/${r.uploadId}/content`);
-    const tooBig = await reserve(json("POST", `${ORIGIN}/api/uploads`, { fileName: "x.mp4", sizeBytes: 51 * 1024 * 1024, contentType: "video/mp4" }));
-    expect(tooBig.status).toBe(400);
+    const large = await reserve(json("POST", `${ORIGIN}/api/uploads`, { fileName: "big.mp4", sizeBytes: 300 * 1024 * 1024, contentType: "video/mp4" }));
+    expect(large.status).toBe(201);
+    const overQuota = await reserve(json("POST", `${ORIGIN}/api/uploads`, { fileName: "x.mp4", sizeBytes: 500 * 1024 * 1024, contentType: "video/mp4" }));
+    expect(overQuota.status).toBe(400);
+  });
+
+  it("tells the user how much space is left", async () => {
+    // The 300 MB reservation above still counts toward the 0.4 GB quota.
+    const res = await reserve(json("POST", `${ORIGIN}/api/uploads`, { fileName: "y.mp4", sizeBytes: 200 * 1024 * 1024, contentType: "video/mp4" }));
+    expect(res.status).toBe(507);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/^Only \d+(\.\d)? MB of video storage is left/);
   });
 
   it("stores a multi-piece upload and serves exact bytes and ranges across chunk boundaries", async () => {

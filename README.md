@@ -137,7 +137,7 @@ curl -X POST "$APP_URL/api/admin/takedown" -H "Authorization: Bearer $ADMIN_TOKE
 
 | Setup | When to use | Cost notes |
 | --- | --- | --- |
-| `VIDEO_UPLOAD_DRIVER=mongodb` | Simplest: no extra service; works on Vercel. Videos are stored in MongoDB in the standard GridFS layout (`videos.files` / `videos.chunks`) | Uses database space — Atlas M0 has 512 MB in total, hence defaults of 50 MB per file and 0.4 GB overall. Every view streams through your app (counts toward Vercel bandwidth/function usage) |
+| `VIDEO_UPLOAD_DRIVER=mongodb` | Simplest: no extra service; works on Vercel. Videos are stored in MongoDB in the standard GridFS layout (`videos.files` / `videos.chunks`) | Uses database space — Atlas M0 has 512 MB in total, hence a default video quota of 0.4 GB (leaving room for QR data); a single file may use all of it, and users are told how much space is left. Every view streams through your app (counts toward Vercel bandwidth/function usage) |
 | `VIDEO_UPLOAD_DRIVER=local` | Development; one VPS/container with a persistent volume (`VIDEO_STORAGE_DIR`) | Disk space and the server's outbound bandwidth — every view is served by your server |
 | `VIDEO_UPLOAD_DRIVER=s3` | Vercel/serverless or anything multi-instance | Storage + requests + egress. Cloudflare R2 has a free tier and no egress fees; AWS S3 charges for egress. Check current provider pricing |
 | `VIDEO_UPLOAD_DRIVER=disabled` | Link-only service (production default) | — |
@@ -202,7 +202,7 @@ See `.env.example`.
 | `RATE_LIMIT_CREATE_PER_10_MIN` | No | Default 30 creations / IP / 10 min / instance |
 | `RATE_LIMIT_MANAGE_PER_10_MIN` | No | Default 300 owner requests / IP / 10 min / instance |
 | `VIDEO_UPLOAD_DRIVER` | No | `mongodb`, `local`, `s3` or `disabled` (default: `mongodb` when `MONGODB_URI` is set, otherwise `disabled`) |
-| `VIDEO_MAX_UPLOAD_MB` | No | Per-file limit; default 50 for `mongodb`, 100 otherwise |
+| `VIDEO_MAX_UPLOAD_MB` | No | Per-file limit; by default none for `mongodb` (a file may use the whole video quota), 100 otherwise |
 | `VIDEO_STORAGE_QUOTA_GB` | No | Total stored video before uploads are refused; default 0.4 for `mongodb`, 5 otherwise |
 | `RATE_LIMIT_UPLOADS_PER_HOUR` | No | Default 10 uploads / IP / hour / instance |
 | `VIDEO_STORAGE_DIR` | local driver | Default `storage/videos` |

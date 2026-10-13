@@ -89,8 +89,13 @@ export async function createUpload(
   if (!parsed.success) throw zodToValidationError(parsed.error);
   const input = parsed.data;
 
-  if ((await storedBytes(db)) + input.sizeBytes > config.quotaBytes) {
-    throw new QuotaExceededError("This server's video storage is full. Please try again later or use a video link instead.");
+  const remaining = Math.max(0, config.quotaBytes - (await storedBytes(db)));
+  if (input.sizeBytes > remaining) {
+    throw new QuotaExceededError(
+      remaining < 1024 * 1024
+        ? "Video storage on this server is full. Delete an old video or use a video link instead."
+        : `Only ${formatBytes(remaining)} of video storage is left on this server. Upload a smaller file or delete an old video.`,
+    );
   }
 
   const id = randomUUID();

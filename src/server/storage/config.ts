@@ -32,14 +32,17 @@ export function getVideoUploadConfig(): VideoUploadConfig {
   const configured = process.env.VIDEO_UPLOAD_DRIVER as UploadDriver | undefined;
   const driver: UploadDriver =
     configured && DRIVERS.includes(configured) ? configured : process.env.MONGODB_URI ? "mongodb" : "disabled";
-  // Videos stored in the database share its space with everything else (512 MB on Atlas M0),
-  // so that driver gets smaller defaults.
+  // Videos stored in the database share its space with everything else (512 MB on Atlas M0):
+  // the total quota keeps room for QR data, and a single file may use all of that quota
+  // unless VIDEO_MAX_UPLOAD_MB sets a smaller per-file limit.
   const inDatabase = driver === "mongodb";
-  return {
-    driver,
-    maxBytes: Math.round(positiveNumber(process.env.VIDEO_MAX_UPLOAD_MB, inDatabase ? 50 : 100) * MB),
-    quotaBytes: Math.round(positiveNumber(process.env.VIDEO_STORAGE_QUOTA_GB, inDatabase ? 0.4 : 5) * 1024 * MB),
-  };
+  const quotaBytes = Math.round(positiveNumber(process.env.VIDEO_STORAGE_QUOTA_GB, inDatabase ? 0.4 : 5) * 1024 * MB);
+  const maxBytes = process.env.VIDEO_MAX_UPLOAD_MB
+    ? Math.round(positiveNumber(process.env.VIDEO_MAX_UPLOAD_MB, 100) * MB)
+    : inDatabase
+      ? quotaBytes
+      : 100 * MB;
+  return { driver, maxBytes, quotaBytes };
 }
 
 export class UploadsDisabledError extends Error {
