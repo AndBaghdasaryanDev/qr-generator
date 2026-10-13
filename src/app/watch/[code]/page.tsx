@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { VideoPlayer } from "@/features/dynamic/video-player";
+import { configuredOrigin } from "@/lib/site";
 import { getDb } from "@/server/db/client";
 import { getPlayerData } from "@/server/dynamic-qr/service";
 
@@ -19,7 +20,7 @@ async function Player({ params }: { params: PageProps<"/watch/[code]">["params"]
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost";
   const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
-  const origin = process.env.APP_URL ? new URL(process.env.APP_URL).origin : `${proto}://${host}`;
+  const origin = configuredOrigin() ?? `${proto}://${host}`;
 
   let data: Awaited<ReturnType<typeof getPlayerData>>;
   try {

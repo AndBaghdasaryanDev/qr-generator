@@ -1,4 +1,4 @@
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryServer } from "mongodb-memory-server-core";
 
 /**
  * Starts a throwaway MongoDB server (a real mongod binary, downloaded once and cached)

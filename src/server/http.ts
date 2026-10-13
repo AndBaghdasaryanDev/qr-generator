@@ -1,5 +1,6 @@
 import "server-only";
 import { MongoServerError, MongoServerSelectionError } from "mongodb";
+import { configuredOrigin } from "@/lib/site";
 import { DatabaseNotConfiguredError } from "@/server/db/client";
 import { MANAGE_TOKEN_PATTERN } from "@/server/dynamic-qr/crypto";
 import { ConflictError, ForbiddenError, NotFoundError, QuotaExceededError, ValidationError } from "@/server/errors";
@@ -64,15 +65,7 @@ export function uploadTokenFrom(request: Request): string | null {
  * printed codes point at the canonical domain rather than whatever Host header arrived.
  */
 export function appOrigin(request: Request): string {
-  const configured = process.env.APP_URL;
-  if (configured) {
-    try {
-      return new URL(configured).origin;
-    } catch {
-      console.error("APP_URL is not a valid URL; falling back to the request origin.");
-    }
-  }
-  return new URL(request.url).origin;
+  return configuredOrigin() ?? new URL(request.url).origin;
 }
 
 /** Maps known failures to safe JSON responses; never leaks stack traces or SQL. */

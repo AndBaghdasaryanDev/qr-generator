@@ -1,6 +1,6 @@
 // Starts a throwaway MongoDB, then `next start` pointed at it. Used by playwright.config.ts.
 import { spawn } from "node:child_process";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryServer } from "mongodb-memory-server-core";
 
 const mongo = await MongoMemoryServer.create();
 const next = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", process.env.PORT ?? "3100"], {
