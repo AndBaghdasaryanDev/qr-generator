@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+/* Class-based dark mode, set before first paint by the inline theme script in layout.tsx. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --fg: #0f172a;
+  --muted: #475569;
+  --subtle: #64748b;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-fg: #ffffff;
+  --primary-soft: #eef2ff;
+  --primary-soft-fg: #3730a3;
+  --success: #15803d;
+  --success-soft: #f0fdf4;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --ring: #6366f1;
+  --shadow-color: 15 23 42;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #020617;
+  --surface: #0f172a;
+  --surface-muted: #1e293b;
+  --fg: #f1f5f9;
+  --muted: #cbd5e1;
+  --subtle: #94a3b8;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --primary-fg: #ffffff;
+  --primary-soft: #1e1b4b;
+  --primary-soft-fg: #c7d2fe;
+  --success: #4ade80;
+  --success-soft: #052e16;
+  --warning: #fbbf24;
+  --warning-soft: #2a1a03;
+  --danger: #f87171;
+  --danger-soft: #2a0a0a;
+  --ring: #818cf8;
+  --shadow-color: 0 0 0;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-fg: var(--primary-soft-fg);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --shadow-card: 0 1px 2px rgb(var(--shadow-color) / 0.04), 0 4px 16px -4px rgb(var(--shadow-color) / 0.08);
+  --shadow-raised: 0 2px 4px rgb(var(--shadow-color) / 0.06), 0 16px 40px -12px rgb(var(--shadow-color) / 0.18);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--primary-soft);
+    color: var(--primary-soft-fg);
+  }
+  input[type="color"] {
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 0.375rem;
+  }
+  input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 0.375rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Printing a QR code: only the dedicated print area is shown. */
+#print-area {
+  display: none;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+  #print-area {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5cm;
+    background: #fff;
+    color: #000;
+  }
+}

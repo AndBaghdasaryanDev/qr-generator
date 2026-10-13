@@ -1,0 +1,35 @@
+import {
+  AtSign,
+  CalendarDays,
+  Clapperboard,
+  Contact,
+  CreditCard,
+  Globe,
+  Mail,
+  MapPin,
+  MessageCircle,
+  MessageSquare,
+  Phone,
+  Smartphone,
+  Type,
+  Wifi,
+  type LucideIcon,
+} from "lucide-react";
+import type { QrType } from "@/lib/payloads/definitions";
+
+export const QR_TYPE_ICONS: Record<QrType, LucideIcon> = {
+  url: Globe,
+  video: Clapperboard,
+  text: Type,
+  email: Mail,
+  phone: Phone,
+  sms: MessageSquare,
+  whatsapp: MessageCircle,
+  wifi: Wifi,
+  vcard: Contact,
+  location: MapPin,
+  social: AtSign,
+  event: CalendarDays,
+  app: Smartphone,
+  payment: CreditCard,
+};
